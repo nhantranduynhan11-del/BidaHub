@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block noi_dung %}
+<h1 class="h3 mb-3">BidaHub – Quản lý quán bida</h1>
+{% if loi %}
+  <div class="alert alert-danger">Chưa kết nối được CSDL: {{ loi }}</div>
+{% else %}
+  <div class="alert alert-success">Đã kết nối CSDL BidaHub. Hiện có {{ so_nhan_vien }} nhân viên trong hệ thống.</div>
+{% endif %}
+<p class="text-muted">Chọn một chức năng ở thanh menu phía trên.</p>
+{% endblock %}
