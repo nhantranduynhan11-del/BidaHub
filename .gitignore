@@ -1,0 +1,19 @@
+.env
+.venv/
+__pycache__/
+*.bak
+*.$*
+~$*
+*.pdf
+*.docx
+*.drawio
+*.png
+
+# LaTeX files
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
