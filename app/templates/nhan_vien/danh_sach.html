@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block tieu_de %}Nhân viên{% endblock %}
+
+{# Tiêu đề cột bấm được để sắp xếp: đổi chiều khi bấm lại đúng cột đang sắp xếp #}
+{% macro tieu_de_cot(cot, nhan) %}
+  {% set chieu_moi = 'giam' if (sap_xep == cot and chieu == 'tang') else 'tang' %}
+  <a href="{{ url_for('nhan_vien.danh_sach', tu_khoa=tu_khoa, chuc_vu=chuc_vu, tinh_trang=tinh_trang, sap_xep=cot, chieu=chieu_moi) }}">
+    {{ nhan }}{% if sap_xep == cot %} {{ '▼' if chieu == 'giam' else '▲' }}{% endif %}
+  </a>
+{% endmacro %}
+
+{% block noi_dung %}
+<h1 class="h3 mb-3">Danh sách nhân viên</h1>
+
+<form method="get" class="row g-2 mb-3">
+  <div class="col-md-4">
+    <input type="text" name="tu_khoa" value="{{ tu_khoa }}" class="form-control" placeholder="Tìm theo họ tên hoặc số điện thoại">
+  </div>
+  <div class="col-md-3">
+    <select name="chuc_vu" class="form-select">
+      <option value="">Mọi chức vụ</option>
+      {% for cv in CHUC_VU %}<option value="{{ cv }}" {{ 'selected' if cv == chuc_vu }}>{{ cv }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <select name="tinh_trang" class="form-select">
+      <option value="">Mọi tình trạng</option>
+      {% for tt in TINH_TRANG %}<option value="{{ tt }}" {{ 'selected' if tt == tinh_trang }}>{{ tt }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2 d-grid">
+    <button class="btn btn-success" type="submit">Tìm</button>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-hover table-sm align-middle bg-white">
+    <thead class="table-light">
+      <tr>
+        <th>{{ tieu_de_cot('MaNV', 'Mã') }}</th>
+        <th>{{ tieu_de_cot('HoTen', 'Họ tên') }}</th>
+        <th>Tuổi</th>
+        <th>Chức vụ</th>
+        <th>Hình thức</th>
+        <th>Điện thoại</th>
+        <th>{{ tieu_de_cot('NgayVaoLam', 'Ngày vào làm') }}</th>
+        <th>Người giám sát</th>
+        <th>Tình trạng</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for nv in ds %}
+      <tr>
+        <td>{{ nv.MaNV }}</td>
+        <td>{{ nv.HoTen }}</td>
+        <td>{{ nv.Tuoi }}</td>
+        <td>{{ nv.ChucVu }}</td>
+        <td>{{ nv.HinhThuc }}</td>
+        <td>{{ nv.SoDienThoai }}</td>
+        <td>{{ nv.NgayVaoLam.strftime('%d/%m/%Y') if nv.NgayVaoLam else '' }}</td>
+        <td>{{ nv.NguoiGiamSat or '—' }}</td>
+        <td>
+          <span class="badge {{ 'text-bg-success' if nv.TinhTrangLamViec == 'Đang làm' else 'text-bg-secondary' }}">{{ nv.TinhTrangLamViec }}</span>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="text-center text-muted py-4">Không có nhân viên nào khớp điều kiện tìm.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="text-muted small">{{ ds|length }} nhân viên.</p>
+{% endblock %}

@@ -9,7 +9,7 @@ __pycache__/
 *.drawio
 *.png
 
-# LaTeX files
+# file phụ của LaTeX
 *.aux
 *.log
 *.out

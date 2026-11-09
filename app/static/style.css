@@ -1,0 +1,3 @@
+/* CSS dùng chung (Nhân). Mỗi màn hình nên dùng class Bootstrap trước, chỉ thêm CSS ở đây khi thật cần. */
+thead th a { color: inherit; text-decoration: none; white-space: nowrap; }
+thead th a:hover { text-decoration: underline; }
