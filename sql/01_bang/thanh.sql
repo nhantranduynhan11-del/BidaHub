@@ -81,7 +81,7 @@ CREATE TABLE dbo.PHIEU_DAT_BAN
     KenhTiepNhan        NVARCHAR(30)      NOT NULL,
     TrangThai           NVARCHAR(30)      NOT NULL CONSTRAINT DF_PhieuDatBan_TrangThai DEFAULT N'Chờ xác nhận',
     GhiChu              NVARCHAR(500)     NULL,
-    MaKH                VARCHAR(10)       NOT NULL, -- Khớp với KHACH_HANG.MaKH (VARCHAR(10)) của Phong
+    MaKH                INT               NOT NULL, -- Khớp với KHACH_HANG.MaKH (INT IDENTITY) của Phong
     MaNVTiepNhan        INT               NULL,     -- Khớp với NHAN_VIEN.MaNV (INT) của Nhân; NULL khi chờ xác nhận
 
     CONSTRAINT PK_PhieuDatBan PRIMARY KEY (MaDatBan),
