@@ -1,4 +1,3 @@
--- sql/03_trigger/dung.sql - RB7 --> RB10
 -- RB9 đã làm bằng cột tính toán DOAN_SU_DUNG_BAN.TienGio (01_bang), làm tròn ở hóa đơn (RB12), không cần trigger.
 
 USE BidaHub;
