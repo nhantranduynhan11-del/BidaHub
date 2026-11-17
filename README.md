@@ -68,8 +68,8 @@ Theo đặc tả, **ai không tự viết ít nhất một câu ở phần 2 th�
 
 - [x] **Thứ Sáu 6/11:** `01_bang/phong.sql`
 - [x] **Thứ Ba 10/11:** dữ liệu `02_du_lieu/phong.sql` (nạp `KHACH_HANG` trước vì Thành và Dũng cần)
-- [ ] **Thứ Sáu 13/11:** RB15 trong `03_trigger/phong.sql`; chốt tên và tham số thủ tục, hàm của cả nhóm trong `docs/chu_ky_thu_tuc.md`
-- [ ] **Thứ Sáu 20/11:** `04_thu_tuc/phong.sql` gồm `sp_ThemKhachHang`, `sp_SuaKhachHang`, `sp_XoaKhachHang`, `sp_TraCuuKhachHang`; kịch bản `99_demo/phong.sql`
+- [x] **Thứ Sáu 13/11:** RB15 trong `03_trigger/phong.sql`; chốt tên và tham số thủ tục, hàm của cả nhóm trong `docs/chu_ky_thu_tuc.md`
+- [x] **Thứ Sáu 20/11:** `04_thu_tuc/phong.sql` gồm `sp_ThemKhachHang`, `sp_SuaKhachHang`, `sp_XoaKhachHang`, `sp_TraCuuKhachHang`; kịch bản `99_demo/phong.sql`
 - [ ] **Thứ Sáu 27/11:** `app/routes/khach_hang.py` và `app/templates/khach_hang/` (màn hình 3.1: form thêm, sửa, xóa; màn hình 3.2: danh sách có tìm kiếm, lọc, sắp xếp)
 - [ ] **Thứ Sáu 4/12:** `baocao/muc/phong.tex`
 
