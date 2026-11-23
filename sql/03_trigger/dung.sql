@@ -403,8 +403,46 @@ BEGIN
 END;
 GO
 
+-- RB2.1: NHÂN VIÊN MỞ PHIÊN PHẢI ĐANG LÀM VIỆC VÀ TÀI KHOẢN KHÔNG BỊ KHÓA
+-- Dùng hàm dùng chung dbo.fn_NhanVienDangHoatDong của Nhân (03_trigger/nhan.sql, phải chạy trước file này).
+-- Mã lỗi:
+--    50491
+CREATE OR ALTER TRIGGER dbo.trg_RB2_KiemTraNhanVienMoPhien
+ON dbo.PHIEN_CHOI
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM inserted AS i
+        LEFT JOIN deleted AS d ON d.MaPhien = i.MaPhien
+        WHERE (d.MaPhien IS NULL OR d.MaNVMoPhien <> i.MaNVMoPhien)
+          AND dbo.fn_NhanVienDangHoatDong(i.MaNVMoPhien) = 0)
+    BEGIN
+        THROW 50491, N'RB2: Nhân viên đã nghỉ việc hoặc tài khoản bị khóa không được mở phiên chơi.', 1;
+    END;
+END;
+GO
+
+-- RB2.2: NHÂN VIÊN GHI GỌI MÓN PHẢI ĐANG LÀM VIỆC VÀ TÀI KHOẢN KHÔNG BỊ KHÓA
+-- Mã lỗi:
+--    50492
+CREATE OR ALTER TRIGGER dbo.trg_RB2_KiemTraNhanVienGhiMon
+ON dbo.DONG_GOI_MON
+AFTER INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM inserted AS i WHERE dbo.fn_NhanVienDangHoatDong(i.MaNVGhiNhan) = 0)
+    BEGIN
+        THROW 50492, N'RB2: Nhân viên đã nghỉ việc hoặc tài khoản bị khóa không được ghi dòng gọi món.', 1;
+    END;
+END;
+GO
+
 -- RB7: ĐỒNG BỘ TRẠNG THÁI BÀN CỦA DỮ LIỆU MẪU (nạp trước trigger)
--- Chỉ sửa bàn lệch trạng thái 'Đang chơi' so với đoạn đang diễn ra.
+-- Đưa trạng thái của mọi bàn (trừ bảo trì, ngưng sử dụng) về đúng với đoạn đang diễn ra và phiếu đã xác nhận.
 UPDATE b
 SET b.TrangThai = CASE
         WHEN EXISTS (SELECT 1 FROM dbo.DOAN_SU_DUNG_BAN AS d
@@ -416,8 +454,12 @@ SET b.TrangThai = CASE
     END
 FROM dbo.BAN AS b
 WHERE b.TrangThai NOT IN (N'Đang bảo trì', N'Ngưng sử dụng')
-  AND ((b.TrangThai <> N'Đang chơi'
-        AND EXISTS (SELECT 1 FROM dbo.DOAN_SU_DUNG_BAN AS d WHERE d.MaBan = b.MaBan AND d.GioKetThucDung IS NULL))
-    OR (b.TrangThai = N'Đang chơi'
-        AND NOT EXISTS (SELECT 1 FROM dbo.DOAN_SU_DUNG_BAN AS d WHERE d.MaBan = b.MaBan AND d.GioKetThucDung IS NULL)));
+  AND b.TrangThai <> CASE
+        WHEN EXISTS (SELECT 1 FROM dbo.DOAN_SU_DUNG_BAN AS d
+                     WHERE d.MaBan = b.MaBan AND d.GioKetThucDung IS NULL) THEN N'Đang chơi'
+        WHEN EXISTS (SELECT 1 FROM dbo.GIU_BAN AS g
+                     JOIN dbo.PHIEU_DAT_BAN AS pd ON pd.MaDatBan = g.MaDatBan
+                     WHERE g.MaBan = b.MaBan AND pd.TrangThai = N'Đã xác nhận') THEN N'Đã đặt'
+        ELSE N'Trống'
+    END;
 GO
