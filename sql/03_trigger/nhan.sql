@@ -5,7 +5,9 @@
 --        UQ_NhanVien_MaTK, UQ_HoiVien_MaTK
 --   RB3: CK_NhanVien_Du18Tuoi, CK_NhanVien_KhongTuGiamSat
 --
--- Quy ước: trigger AFTER; khi vi phạm thì ROLLBACK TRANSACTION rồi THROW câu thông báo cụ thể.
+-- Quy ước: trigger AFTER; khi vi phạm thì THROW câu thông báo cụ thể, không viết ROLLBACK TRANSACTION trong trigger
+-- (THROW trong trigger đã hủy cả giao tác vì XACT_ABORT mặc định bật; người gọi tự ROLLBACK trong CATCH).
+-- Theo quy ước chung của file ghép 03_trigger/tao_tat_ca_trigger.sql.
 -- Dải mã lỗi của Nhân: 50100-50199.
 --   50101  RB1  vai trò "Quản lý" cấp cho tài khoản không thuộc nhân viên chức vụ Quản lý   trg_DuocCap_KiemTraVaiTro
 --   50102  RB1  vai trò "Hội viên" cấp cho tài khoản không thuộc hội viên                    trg_DuocCap_KiemTraVaiTro
@@ -19,6 +21,9 @@
 --   50108  RB3  người giám sát không có chức vụ Quản lý                                      trg_NhanVien_GiamSat
 --   50109  RB3  nhân viên đang giám sát người khác bị hạ khỏi chức vụ Quản lý                trg_NhanVien_GiamSat
 --   50110  RB3  quan hệ giám sát tạo thành vòng lặp                                          trg_NhanVien_GiamSat
+--   50112  RB1  tài khoản bị tách khỏi chủ (đổi MaTK, xóa nhân viên/hội viên) mà vẫn còn    trg_NhanVien_TaiKhoan
+--               vai trò không hợp với chủ hiện tại                                          trg_HoiVien_TaiKhoan
+--   50113  RB1  đổi tên vai trò đã có (làm đổi nghĩa mọi dòng DUOC_CAP)                     trg_VaiTro_KhongDoiTen
 --
 -- Chạy sau 01_bang (đủ cả HOI_VIEN của Phong) và 02_du_lieu. Dữ liệu mẫu nạp trước khi trigger tồn tại nên không bị trigger chặn;
 -- các truy vấn kiểm tra A1-A4 trong 99_demo/nhan.sql bảo đảm dữ liệu mẫu thỏa RB1-RB3.
@@ -61,12 +66,34 @@ WHERE nv.ChucVu = N'Quản lý'
 GO
 
 ------------------------------------------------------------------------------------------
--- RB1 (trigger 1 của mục 2.2). Ba trigger cùng bảo vệ một ràng buộc:
+-- RB1 (trigger 1 của mục 2.2). Bốn trigger cùng bảo vệ một ràng buộc:
 --   (1) vai trò chỉ được cấp đúng loại chủ tài khoản,
 --   (2) một tài khoản không thuộc đồng thời nhân viên và hội viên.
--- DML có thể vi phạm: INSERT và UPDATE (MaTK, MaVaiTro) trên DUOC_CAP; INSERT và UPDATE (MaTK, ChucVu) trên NHAN_VIEN;
--- INSERT và UPDATE (MaTK) trên HOI_VIEN. DELETE không tạo ra cặp sai loại nên không cần kiểm tra.
+-- DML có thể vi phạm:
+--   DUOC_CAP  : INSERT; UPDATE (MaTK, MaVaiTro)                  -> cấp vai trò cho sai loại chủ
+--   NHAN_VIEN : INSERT; UPDATE (MaTK, ChucVu)                     -> tài khoản mới đã thuộc hội viên, hoặc mang vai trò sai
+--               UPDATE (MaTK); DELETE                             -> tài khoản cũ bị tách khỏi nhân viên mà vẫn giữ vai trò
+--   HOI_VIEN  : INSERT; UPDATE (MaTK)                             -> tài khoản mới đã thuộc nhân viên
+--               UPDATE (MaTK); DELETE (kể cả xóa dây chuyền từ KHACH_HANG) -> tài khoản cũ vẫn giữ vai trò "Hội viên"
+--   VAI_TRO   : UPDATE (TenVaiTro)                                -> đổi nghĩa vai trò của mọi tài khoản đã được cấp
+-- DELETE trên DUOC_CAP chỉ bớt vai trò nên không vi phạm RB1 (ảnh hưởng RB2, xem phần RB2).
+-- Tài khoản chưa có chủ (vừa INSERT TAI_KHOAN) không chặn bằng trigger được: NHAN_VIEN.MaTK là NOT NULL nên tài khoản
+-- phải có trước chủ, và SQL Server không có ràng buộc hoãn tới cuối giao tác; ý này do thủ tục tạo tài khoản bảo đảm.
 ------------------------------------------------------------------------------------------
+
+-- Các cặp (tài khoản, vai trò) đang sai loại chủ theo RB1, dùng chung cho trg_NhanVien_TaiKhoan và trg_HoiVien_TaiKhoan.
+CREATE OR ALTER VIEW dbo.v_VaiTroSaiChu
+AS
+SELECT dc.MaTK, vt.TenVaiTro
+FROM dbo.DUOC_CAP dc
+JOIN dbo.VAI_TRO vt        ON vt.MaVaiTro = dc.MaVaiTro
+LEFT JOIN dbo.NHAN_VIEN nv ON nv.MaTK = dc.MaTK
+LEFT JOIN dbo.HOI_VIEN  hv ON hv.MaTK = dc.MaTK
+WHERE (vt.TenVaiTro = N'Quản lý'  AND (nv.MaNV IS NULL OR nv.ChucVu <> N'Quản lý'))
+   OR (vt.TenVaiTro = N'Hội viên' AND hv.MaKH IS NULL)
+   OR (vt.TenVaiTro NOT IN (N'Quản lý', N'Hội viên') AND nv.MaNV IS NULL);
+GO
+
 CREATE OR ALTER TRIGGER dbo.trg_DuocCap_KiemTraVaiTro
 ON dbo.DUOC_CAP
 AFTER INSERT, UPDATE
@@ -99,7 +126,6 @@ BEGIN
 
     IF @Loi IS NOT NULL
     BEGIN
-        ROLLBACK TRANSACTION;
         THROW @Ma, @Loi, 1;
     END
 END
@@ -107,10 +133,11 @@ GO
 
 CREATE OR ALTER TRIGGER dbo.trg_NhanVien_TaiKhoan
 ON dbo.NHAN_VIEN
-AFTER INSERT, UPDATE
+AFTER INSERT, UPDATE, DELETE
 AS
 BEGIN
     SET NOCOUNT ON;
+    IF EXISTS (SELECT 1 FROM inserted) AND NOT (UPDATE(MaTK) OR UPDATE(ChucVu)) RETURN;
     DECLARE @Ma INT, @Loi NVARCHAR(300);
 
     -- (a) tài khoản đã thuộc hội viên thì không gán cho nhân viên
@@ -131,9 +158,18 @@ BEGIN
         JOIN dbo.VAI_TRO vt  ON vt.MaVaiTro = dc.MaVaiTro
         WHERE i.ChucVu <> N'Quản lý' AND vt.TenVaiTro = N'Quản lý';
 
+    -- (c) tài khoản mới hoặc tài khoản cũ (bị tách khỏi nhân viên do đổi MaTK hoặc xóa nhân viên)
+    --     vẫn còn vai trò không hợp với chủ hiện tại
+    IF @Loi IS NULL
+        SELECT TOP (1) @Ma = 50112,
+               @Loi = N'Tài khoản "' + tk.TenDangNhap + N'" vẫn mang vai trò "' + v.TenVaiTro
+                    + N'" nhưng không còn thuộc chủ phù hợp sau thao tác này; hãy gỡ vai trò trước'
+        FROM dbo.v_VaiTroSaiChu v
+        JOIN dbo.TAI_KHOAN tk ON tk.MaTK = v.MaTK
+        WHERE v.MaTK IN (SELECT MaTK FROM inserted UNION SELECT MaTK FROM deleted);
+
     IF @Loi IS NOT NULL
     BEGIN
-        ROLLBACK TRANSACTION;
         THROW @Ma, @Loi, 1;
     END
 END
@@ -141,22 +177,57 @@ GO
 
 CREATE OR ALTER TRIGGER dbo.trg_HoiVien_TaiKhoan
 ON dbo.HOI_VIEN
-AFTER INSERT, UPDATE
+AFTER INSERT, UPDATE, DELETE
 AS
 BEGIN
     SET NOCOUNT ON;
-    IF NOT UPDATE(MaTK) RETURN;
+    IF EXISTS (SELECT 1 FROM inserted) AND NOT UPDATE(MaTK) RETURN;
+    DECLARE @Ma INT, @Loi NVARCHAR(300);
 
-    DECLARE @Loi NVARCHAR(300);
-    SELECT TOP (1) @Loi = N'Tài khoản "' + tk.TenDangNhap + N'" đã thuộc về nhân viên nên không thể gán cho hội viên'
+    -- (a) tài khoản đã thuộc nhân viên thì không gán cho hội viên
+    SELECT TOP (1) @Ma = 50106,
+           @Loi = N'Tài khoản "' + tk.TenDangNhap + N'" đã thuộc về nhân viên nên không thể gán cho hội viên'
     FROM inserted i
     JOIN dbo.NHAN_VIEN nv ON nv.MaTK = i.MaTK
     JOIN dbo.TAI_KHOAN tk ON tk.MaTK = i.MaTK;
 
+    -- (b) tài khoản cũ bị tách khỏi hội viên (đổi MaTK, gỡ MaTK hoặc xóa hội viên) mà vẫn còn vai trò "Hội viên",
+    --     hoặc tài khoản mới đang mang vai trò không hợp với hội viên
+    IF @Loi IS NULL
+        SELECT TOP (1) @Ma = 50112,
+               @Loi = N'Tài khoản "' + tk.TenDangNhap + N'" vẫn mang vai trò "' + v.TenVaiTro
+                    + N'" nhưng không còn thuộc chủ phù hợp sau thao tác này; hãy gỡ vai trò trước'
+        FROM dbo.v_VaiTroSaiChu v
+        JOIN dbo.TAI_KHOAN tk ON tk.MaTK = v.MaTK
+        WHERE v.MaTK IN (SELECT MaTK FROM inserted UNION SELECT MaTK FROM deleted);
+
     IF @Loi IS NOT NULL
     BEGIN
-        ROLLBACK TRANSACTION;
-        THROW 50106, @Loi, 1;
+        THROW @Ma, @Loi, 1;
+    END
+END
+GO
+
+-- VAI_TRO là bảng danh mục cố định: đổi tên một vai trò đã có làm đổi quyền của mọi tài khoản được cấp vai trò đó
+-- (ví dụ đổi "Quản lý" thành tên khác thì RB1 và RB2 đều bị vượt qua mà không trigger nào khác chạy).
+CREATE OR ALTER TRIGGER dbo.trg_VaiTro_KhongDoiTen
+ON dbo.VAI_TRO
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT UPDATE(TenVaiTro) RETURN;
+
+    DECLARE @Loi NVARCHAR(300);
+    SELECT TOP (1) @Loi = N'Không được đổi tên vai trò "' + d.TenVaiTro + N'" thành "' + i.TenVaiTro
+                        + N'": tên vai trò quyết định quyền của mọi tài khoản đã được cấp'
+    FROM inserted i
+    JOIN deleted d ON d.MaVaiTro = i.MaVaiTro
+    WHERE d.TenVaiTro <> i.TenVaiTro;
+
+    IF @Loi IS NOT NULL
+    BEGIN
+        THROW 50113, @Loi, 1;
     END
 END
 GO
@@ -174,7 +245,6 @@ BEGIN
     IF EXISTS (SELECT 1 FROM inserted) AND NOT UPDATE(TrangThai) RETURN;
     IF NOT EXISTS (SELECT 1 FROM dbo.v_QuanLyHoatDong)
     BEGIN
-        ROLLBACK TRANSACTION;
         THROW 50107, N'Hệ thống phải còn ít nhất một tài khoản Quản lý đang hoạt động; không thể khóa hoặc xóa quản lý cuối cùng', 1;
     END
 END
@@ -190,7 +260,6 @@ BEGIN
        AND NOT (UPDATE(TinhTrangLamViec) OR UPDATE(ChucVu) OR UPDATE(MaTK)) RETURN;
     IF NOT EXISTS (SELECT 1 FROM dbo.v_QuanLyHoatDong)
     BEGIN
-        ROLLBACK TRANSACTION;
         THROW 50107, N'Hệ thống phải còn ít nhất một tài khoản Quản lý đang hoạt động; không thể cho nghỉ hoặc đổi chức vụ quản lý cuối cùng', 1;
     END
 END
@@ -205,7 +274,6 @@ BEGIN
     IF EXISTS (SELECT 1 FROM inserted) AND NOT (UPDATE(MaTK) OR UPDATE(MaVaiTro)) RETURN;
     IF NOT EXISTS (SELECT 1 FROM dbo.v_QuanLyHoatDong)
     BEGIN
-        ROLLBACK TRANSACTION;
         THROW 50107, N'Hệ thống phải còn ít nhất một tài khoản Quản lý đang hoạt động; không thể gỡ vai trò Quản lý cuối cùng', 1;
     END
 END
@@ -242,10 +310,14 @@ BEGIN
         JOIN dbo.NHAN_VIEN cap ON cap.MaNVGiamSat = i.MaNV
         WHERE i.ChucVu <> N'Quản lý';
 
-    -- (c) không có vòng lặp: đi ngược dây giám sát từ mỗi dòng vừa ghi, nếu gặp lại chính nó là vòng
+    -- (c) không có vòng lặp: đi ngược dây giám sát từ mỗi dòng vừa ghi.
+    --     Không có vòng thì dây giám sát của một người đi qua tối đa (số nhân viên - 1) người rồi gặp đỉnh (NULL).
+    --     Vì vậy: gặp lại chính nó, hoặc đã đi đủ @SoNV bước mà chưa tới đỉnh, thì chắc chắn có vòng.
     IF @Loi IS NULL
     BEGIN
-        ;WITH Chuoi AS (
+        DECLARE @SoNV INT = (SELECT COUNT(*) FROM dbo.NHAN_VIEN);
+
+        WITH Chuoi AS (
             SELECT i.MaNV AS Goc, i.MaNVGiamSat AS Cur, 1 AS Buoc
             FROM inserted i
             WHERE i.MaNVGiamSat IS NOT NULL
@@ -253,17 +325,17 @@ BEGIN
             SELECT c.Goc, nv.MaNVGiamSat, c.Buoc + 1
             FROM Chuoi c
             JOIN dbo.NHAN_VIEN nv ON nv.MaNV = c.Cur
-            WHERE nv.MaNVGiamSat IS NOT NULL AND c.Cur <> c.Goc AND c.Buoc < 50
+            WHERE nv.MaNVGiamSat IS NOT NULL AND c.Cur <> c.Goc AND c.Buoc < @SoNV
         )
         SELECT TOP (1) @Ma = 50110,
                @Loi = N'Quan hệ giám sát của nhân viên mã ' + CAST(Goc AS NVARCHAR(10)) + N' tạo thành vòng lặp'
         FROM Chuoi
-        WHERE Cur = Goc;
+        WHERE Cur = Goc OR Buoc >= @SoNV
+        ORDER BY Buoc
     END
 
     IF @Loi IS NOT NULL
     BEGIN
-        ROLLBACK TRANSACTION;
         THROW @Ma, @Loi, 1;
     END
 END
