@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block tieu_de %}Thống kê doanh thu{% endblock %}
+
+{% block noi_dung %}
+<h1 class="h3 mb-2">Thống kê doanh thu</h1>
+<p class="text-muted mb-3">Tra cứu doanh thu theo ngày từ các giao dịch thanh toán thành công.</p>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body">
+    <form method="get" action="{{ url_for('thong_ke.doanh_thu') }}" class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label for="tu_ngay" class="form-label fw-semibold">Từ ngày</label>
+        <input id="tu_ngay" name="tu_ngay" type="date" class="form-control"
+               value="{{ tu_ngay }}" required>
+      </div>
+      <div class="col-md-3">
+        <label for="den_ngay" class="form-label fw-semibold">Đến ngày</label>
+        <input id="den_ngay" name="den_ngay" type="date" class="form-control"
+               value="{{ den_ngay }}" required>
+      </div>
+      <div class="col-md-4">
+        <label for="doanh_thu_toi_thieu" class="form-label fw-semibold">Doanh thu tối thiểu (VNĐ)</label>
+        <input id="doanh_thu_toi_thieu" name="doanh_thu_toi_thieu" type="number"
+               min="0" max="9999999999999999.99" step="0.01" class="form-control"
+               value="{{ doanh_thu_toi_thieu }}" required>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button type="submit" class="btn btn-success">Xem thống kê</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if da_tim %}
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-2">Tổng doanh thu</div>
+        <div class="h3 text-success mb-0">{{ "{:,.0f}".format(tong_doanh_thu).replace(",", ".") }} <span class="fs-6">VNĐ</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-2">Giao dịch thành công</div>
+        <div class="h3 mb-0">{{ tong_giao_dich }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-2">Số ngày có doanh thu đạt điều kiện</div>
+        <div class="h3 mb-0">{{ ds|length }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <h2 class="h5 mb-3">Doanh thu theo ngày</h2>
+    {% if ds %}
+    <div class="table-responsive">
+      <table class="table table-hover table-sm align-middle bg-white mb-0">
+        <thead class="table-light">
+          <tr>
+            <th scope="col">Ngày thanh toán</th>
+            <th scope="col" class="text-end">Giao dịch thành công</th>
+            <th scope="col" class="text-end">Hóa đơn</th>
+            <th scope="col" class="text-end">Phiên chơi</th>
+            <th scope="col" class="text-end">Doanh thu (VNĐ)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for dong in ds %}
+          <tr>
+            <td>{{ dong.NgayThanhToan.strftime('%d/%m/%Y') if dong.NgayThanhToan else '—' }}</td>
+            <td class="text-end">{{ dong.SoGiaoDichThanhCong }}</td>
+            <td class="text-end">{{ dong.SoHoaDon }}</td>
+            <td class="text-end">{{ dong.SoPhienChoi }}</td>
+            <td class="text-end fw-semibold">{{ "{:,.0f}".format(dong.TongDoanhThu).replace(",", ".") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info mb-0" role="status">
+      Không có giao dịch thành công thỏa mãn khoảng thời gian và mức doanh thu tối thiểu đã chọn.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<p class="text-muted small">Chọn khoảng thời gian và nhấn <strong>Xem thống kê</strong> để lấy dữ liệu.</p>
+{% endif %}
+{% endblock %}
