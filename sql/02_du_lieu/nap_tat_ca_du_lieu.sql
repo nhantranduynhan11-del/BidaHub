@@ -204,7 +204,7 @@ INSERT INTO dbo.HOI_VIEN (MaKH, NgayDangKy, DiemTichLuy, MaHang, MaTK) VALUES
 (3, CAST('2025-07-05 09:00:00' AS DATETIME2(0)),   50, 1, 14),    -- 50 điểm   -> Hạng Đồng (MaHang 1)
 (4, CAST('2025-08-12 18:45:00' AS DATETIME2(0)),  750, 4, 15),    -- 750 điểm  -> Hạng Bạch Kim (MaHang 4)
 (5, CAST('2025-10-01 10:20:00' AS DATETIME2(0)), 1250, 5, 16),    -- 1250 điểm -> Hạng Kim Cương (MaHang 5)
-(6, CAST('2025-10-15 16:00:00' AS DATETIME2(0)),    0, 1, NULL);  -- 0 điểm    -> Hạng Đồng (MaHang 1)
+(6, CAST('2025-10-15 16:00:00' AS DATETIME2(0)),   39, 1, NULL);  -- 39 điểm   -> Hạng Đồng (MaHang 1); 39 điểm do HOA_DON 4 (390.667 đồng) cộng (RB15)
 GO
 
 -- ############################################################################
@@ -665,20 +665,24 @@ GO
 -- Số tiền khớp dữ liệu của Dũng theo RB12:
 --   TienGioChoi = làm tròn tổng TienGio các đoạn của phiên; TienMon = tổng ThanhTien các dòng món chưa hủy.
 --   TienGiam: KM theo phần trăm tính trên TienGioChoi, KM theo số tiền trừ thẳng; TongPhaiTra = TienGioChoi + TienMon - TienGiam.
+--   TienGiam = TienGiamTheoHang + TienGiamKhuyenMai (RB13); cả 3 hóa đơn có giảm đều là giảm theo khuyến mãi.
+--   DiemCong (RB15): hóa đơn đã thanh toán của hội viên = FLOOR(TongPhaiTra / 10000); khách không phải hội viên = 0.
+--     Hội viên: phiên 2 (MaKH 1), phiên 3 (MaKH 2), phiên 4 (MaKH 6); MaKH 7, 8 và khách vãng lai không phải hội viên.
 INSERT INTO dbo.HOA_DON
-    (ThoiDiemLap, DiemCong, TrangThaiThanhToan, MaPhien, MaNVLap, MaKM, TienGioChoi, TienMon, TienGiam, TongPhaiTra)
+    (ThoiDiemLap, DiemCong, TrangThaiThanhToan, MaPhien, MaNVLap, MaKM, TienGioChoi, TienMon, TienGiam, TongPhaiTra,
+     TienGiamTheoHang, TienGiamKhuyenMai)
 VALUES
-    ('2025-10-26T08:00:00', 0, N'Đã thanh toán', 1, 3, 1,    245000.00, 188000.00, 24500.00, 408500.00), -- MaHoaDon 1: phiên 1, KM 10% trên tiền giờ (24.500)
+    ('2025-10-26T08:00:00', 0, N'Đã thanh toán', 1, 3, 1,    245000.00, 188000.00, 24500.00, 408500.00, 0.00, 24500.00), -- MaHoaDon 1: phiên 1, KM 10% trên tiền giờ (24.500)
 
-    ('2025-10-26T08:30:00', 0, N'Đã thanh toán', 2, 4, 3,    135000.00,  70000.00,  6750.00, 198250.00), -- MaHoaDon 2: phiên 2, KM 5% trên tiền giờ (6.750)
+    ('2025-10-26T08:30:00', 19, N'Đã thanh toán', 2, 4, 3,    135000.00,  70000.00,  6750.00, 198250.00, 0.00,  6750.00), -- MaHoaDon 2: phiên 2, KM 5% trên tiền giờ (6.750)
 
-    ('2025-10-26T09:00:00', 0, N'Đã thanh toán', 3, 3, NULL, 490000.00, 180000.00,     0.00, 670000.00), -- MaHoaDon 3: phiên 3, không khuyến mãi (dòng món đã hủy không tính)
+    ('2025-10-26T09:00:00', 67, N'Đã thanh toán', 3, 3, NULL, 490000.00, 180000.00,     0.00, 670000.00, 0.00,     0.00), -- MaHoaDon 3: phiên 3, không khuyến mãi (dòng món đã hủy không tính)
 
-    ('2025-10-26T09:30:00', 0, N'Đã thanh toán', 4, 4, 4,    331667.00,  89000.00, 30000.00, 390667.00), -- MaHoaDon 4: phiên 4, giảm cố định 30.000 (2 đoạn giờ, tiền giờ đã làm tròn)
+    ('2025-10-26T09:30:00', 39, N'Đã thanh toán', 4, 4, 4,    331667.00,  89000.00, 30000.00, 390667.00, 0.00, 30000.00), -- MaHoaDon 4: phiên 4, giảm cố định 30.000 (2 đoạn giờ, tiền giờ đã làm tròn)
 
-    ('2025-10-26T10:00:00', 0, N'Đã thanh toán', 5, 3, NULL,  90000.00,  20000.00,     0.00, 110000.00), -- MaHoaDon 5: phiên 5, không khuyến mãi
+    ('2025-10-26T10:00:00', 0, N'Đã thanh toán', 5, 3, NULL,  90000.00,  20000.00,     0.00, 110000.00, 0.00,     0.00), -- MaHoaDon 5: phiên 5, không khuyến mãi
 
-    ('2025-10-26T10:30:00', 0, N'Đã thanh toán', 6, 4, NULL, 212500.00, 217000.00,     0.00, 429500.00); -- MaHoaDon 6: phiên 6, không khuyến mãi
+    ('2025-10-26T10:30:00', 0, N'Đã thanh toán', 6, 4, NULL, 212500.00, 217000.00,     0.00, 429500.00, 0.00,     0.00); -- MaHoaDon 6: phiên 6, không khuyến mãi
 GO
 
 -- BANG 6: GIAO_DICH_THANH_TOAN (MaGD 1-9)

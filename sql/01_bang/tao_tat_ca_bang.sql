@@ -367,6 +367,10 @@ CREATE TABLE dbo.DOAN_SU_DUNG_BAN
 );
 GO
 
+-- RB7: tại một thời điểm, một bàn chỉ thuộc tối đa một đoạn sử dụng đang diễn ra (chuyển từ 03_trigger/dung.sql)
+CREATE UNIQUE INDEX UQ_DoanSuDungBan_BanDangDung ON dbo.DOAN_SU_DUNG_BAN(MaBan) WHERE GioKetThucDung IS NULL;
+GO
+
 CREATE TABLE dbo.DONG_GOI_MON
 (
     MaPhien                 INT             NOT NULL,
@@ -463,6 +467,8 @@ CREATE TABLE dbo.HOA_DON
     TienGioChoi         DECIMAL(18,2)       NOT NULL CONSTRAINT DF_HoaDon_TienGioChoi DEFAULT 0,
     TienMon             DECIMAL(18,2)       NOT NULL CONSTRAINT DF_HoaDon_TienMon DEFAULT 0,
     TienGiam            DECIMAL(18,2)       NOT NULL CONSTRAINT DF_HoaDon_TienGiam DEFAULT 0,
+    TienGiamTheoHang    DECIMAL(18,2)       NOT NULL CONSTRAINT DF_HoaDon_TienGiamTheoHang DEFAULT 0,   -- RB13: phần giảm theo hạng hội viên
+    TienGiamKhuyenMai   DECIMAL(18,2)       NOT NULL CONSTRAINT DF_HoaDon_TienGiamKhuyenMai DEFAULT 0,  -- RB13: phần giảm theo khuyến mãi
     TongPhaiTra         DECIMAL(18,2)       NOT NULL CONSTRAINT DF_HoaDon_TongPhaiTra DEFAULT 0,
     DiemCong            INT                 NOT NULL CONSTRAINT DF_HoaDon_DiemCong DEFAULT 0,
     TrangThaiThanhToan  NVARCHAR(30)        NOT NULL CONSTRAINT DF_HoaDon_TrangThai DEFAULT N'Chưa thanh toán',
@@ -479,6 +485,8 @@ CREATE TABLE dbo.HOA_DON
     CONSTRAINT CK_HoaDon_TrangThai CHECK (TrangThaiThanhToan IN (N'Chưa thanh toán', N'Thanh toán một phần', N'Đã thanh toán')),
     CONSTRAINT CK_HoaDon_Tien CHECK (TienGioChoi >= 0 AND TienMon >= 0 AND TienGiam >= 0
         AND TienGiam <= TienGioChoi + TienMon),                                        -- RB13
+    CONSTRAINT CK_HoaDon_PhanBoGiam CHECK (TienGiamTheoHang >= 0 AND TienGiamKhuyenMai >= 0
+        AND TienGiam = TienGiamTheoHang + TienGiamKhuyenMai),                          -- RB13 (chuyển từ 03_trigger/khang.sql)
     CONSTRAINT CK_HoaDon_TongPhaiTra CHECK (TongPhaiTra = TienGioChoi + TienMon - TienGiam),
     CONSTRAINT CK_HoaDon_LamTronDong CHECK (TienGioChoi = ROUND(TienGioChoi, 0) AND TienMon = ROUND(TienMon, 0)
         AND TienGiam = ROUND(TienGiam, 0))                                              -- RB9
