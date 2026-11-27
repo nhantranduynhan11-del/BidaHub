@@ -9,87 +9,71 @@
 --    Điểm tối thiểu của các hạng phải khác nhau và phần trăm giảm giá của hạng nằm trong khoảng từ 0 đến 100."
 --
 -- Phân chia xử lý:
---   - Đã kiểm tra trong bảng (01_bang/tao_tat_ca_bang.sql):
+--   - Đã kiểm tra trong CREATE TABLE (01_bang/tao_tat_ca_bang.sql):
 --       UQ_HangThanhVien_DiemToiThieu: Điểm tối thiểu giữa các hạng phải khác nhau.
 --       CK_HangThanhVien_DiemToiThieu: Điểm tối thiểu >= 0.
 --       CK_HangThanhVien_PhanTramGiamGia: Phần trăm giảm giá từ 0 đến 100.
 --       CK_HoiVien_DiemTichLuy: Điểm tích lũy >= 0.
 --
---   - Trigger trong file này:
+--   - Trigger trong file này (đồng bộ với PHẦN 5 của 03_trigger/tao_tat_ca_trigger.sql):
 --       1. trg_HOI_VIEN_RB15_CapNhatHang: Tự động cập nhật MaHang phù hợp theo DiemTichLuy.
---       2. trg_HANG_THANH_VIEN_RB15_XoaHang: Chặn xóa hạng thành viên đang có hội viên sử dụng (INSTEAD OF DELETE).
---       3. trg_HANG_THANH_VIEN_RB15_DongBoHang: Đồng bộ lại hạng cho hội viên khi đổi mốc điểm tối thiểu.
---       4. trg_HOA_DON_RB15_TichDiemHoiVien: Tính thuộc tính dẫn xuất DiemCong và tích lũy điểm khi thanh toán hóa đơn.
---       5. trg_HOA_DON_RB15_BaoVeDiemCong: Khóa, không cho sửa điểm cộng của hóa đơn đã thanh toán.
+--       2. trg_HANG_THANH_VIEN_RB15_XoaHang: Chặn xóa hạng thành viên đang có hội viên (INSTEAD OF DELETE).
+--       3. trg_HANG_THANH_VIEN_RB15_DongBoHang: Đồng bộ lại hạng cho hội viên khi thêm hạng hoặc đổi mốc điểm.
+--       4. trg_HOA_DON_RB15_TichDiemHoiVien: Ghi DiemCong và tích điểm khi hóa đơn chuyển sang 'Đã thanh toán'.
+--       5. trg_HOA_DON_RB15_BaoVeDiemCong: Khóa không cho sửa sai DiemCong của hóa đơn đã thanh toán.
 --
--- Dải mã lỗi của Phong: 50200 - 50299
---   50215 (RB15): Điểm tích lũy của hội viên không được là số âm.
---   50216 (RB15): Hóa đơn của khách hàng không phải hội viên không được cộng điểm.
---   50217 (RB15): Điểm cộng không khớp công thức 1 điểm / 10.000 VNĐ hoặc sửa điểm hóa đơn đã thanh toán.
---   50218 (RB15): Không tìm thấy hạng thành viên phù hợp với điểm tích lũy của hội viên.
---   50219 (RB15): Không thể xóa hạng thành viên đang có hội viên sử dụng.
+-- Dải mã lỗi của Phong: 50200 - 50299 (RB15 dùng 50216 - 50219):
+--   50216 (RB15): Hóa đơn của khách không phải hội viên không được cộng điểm.
+--   50217 (RB15): Điểm cộng không khớp công thức 1 điểm / 10.000 đồng hoặc sửa điểm hóa đơn đã thanh toán.
+--   50218 (RB15): Không có hạng thành viên nào phù hợp với điểm tích lũy của hội viên.
+--   50219 (RB15): Không xóa được hạng thành viên đang có hội viên.
 -- ============================================================================
 
 USE BidaHub;
 GO
 
--- ============================================================================
--- 1. TRIGGER TRÊN BẢNG HOI_VIEN: Tự động cập nhật hạng theo điểm tích lũy
--- ============================================================================
+-- ----------------------------------------------------------------------------
+-- trg_HOI_VIEN_RB15_CapNhatHang
+--   RB15: hạng của hội viên là hạng có điểm tối thiểu lớn nhất không vượt quá điểm tích lũy.
+--   Tính: HOI_VIEN.MaHang (kể cả khi ai đó sửa tay MaHang sai).
+--   Chạy khi: INSERT, UPDATE(DiemTichLuy, MaHang) trên HOI_VIEN.
+--   Mã lỗi: 50218 không có hạng nào phù hợp.
+-- ----------------------------------------------------------------------------
 CREATE OR ALTER TRIGGER dbo.trg_HOI_VIEN_RB15_CapNhatHang
 ON dbo.HOI_VIEN
 AFTER INSERT, UPDATE
 AS
 BEGIN
     SET NOCOUNT ON;
+    IF NOT (UPDATE(DiemTichLuy) OR UPDATE(MaHang)) RETURN;
 
-    -- Kiểm tra điểm tích lũy không âm
-    IF EXISTS (SELECT 1 FROM inserted WHERE DiemTichLuy < 0)
-    BEGIN
-        THROW 50215, N'RB15: Điểm tích lũy của hội viên không được là số âm.', 1;
-    END;
+    IF EXISTS (SELECT 1
+               FROM inserted AS i
+               WHERE NOT EXISTS (SELECT 1 FROM dbo.HANG_THANH_VIEN AS h WHERE h.DiemToiThieu <= i.DiemTichLuy))
+        THROW 50218, N'RB15 (HOI_VIEN.DiemTichLuy): Không có hạng thành viên nào phù hợp với điểm tích lũy của hội viên.', 1;
 
-    -- Kiểm tra xem có hạng thành viên phù hợp (DiemToiThieu <= DiemTichLuy) không
-    IF EXISTS (
-        SELECT 1
+    WITH HangChuan AS (
+        SELECT i.MaKH,
+               (SELECT TOP (1) h.MaHang
+                FROM dbo.HANG_THANH_VIEN AS h
+                WHERE h.DiemToiThieu <= i.DiemTichLuy
+                ORDER BY h.DiemToiThieu DESC) AS MaHangChuan
         FROM inserted AS i
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM dbo.HANG_THANH_VIEN AS h
-            WHERE h.DiemToiThieu <= i.DiemTichLuy
-        )
     )
-    BEGIN
-        THROW 50218, N'RB15: Không tìm thấy hạng thành viên phù hợp với điểm tích lũy của hội viên.', 1;
-    END;
-
-    -- Tự động cập nhật MaHang = hạng có DiemToiThieu lớn nhất mà <= DiemTichLuy
-    IF TRIGGER_NESTLEVEL() <= 2
-    BEGIN
-        ;WITH HangChuan AS (
-            SELECT 
-                i.MaKH,
-                (
-                    SELECT TOP (1) h.MaHang
-                    FROM dbo.HANG_THANH_VIEN AS h
-                    WHERE h.DiemToiThieu <= i.DiemTichLuy
-                    ORDER BY h.DiemToiThieu DESC
-                ) AS MaHangChuan
-            FROM inserted AS i
-        )
-        UPDATE hv
-        SET hv.MaHang = hc.MaHangChuan
-        FROM dbo.HOI_VIEN AS hv
-        JOIN HangChuan AS hc ON hc.MaKH = hv.MaKH
-        WHERE hc.MaHangChuan IS NOT NULL 
-          AND (hv.MaHang IS NULL OR hv.MaHang <> hc.MaHangChuan);
-    END;
+    UPDATE hv
+    SET hv.MaHang = hc.MaHangChuan
+    FROM dbo.HOI_VIEN AS hv
+    JOIN HangChuan AS hc ON hc.MaKH = hv.MaKH
+    WHERE hv.MaHang <> hc.MaHangChuan;
 END;
 GO
 
--- ============================================================================
--- 2. TRIGGER TRÊN BẢNG HANG_THANH_VIEN: Chặn xóa hạng đang có hội viên
--- ============================================================================
+-- ----------------------------------------------------------------------------
+-- trg_HANG_THANH_VIEN_RB15_XoaHang  (INSTEAD OF DELETE)
+--   RB15: không xóa hạng đang có hội viên; hạng không ai dùng thì xóa bình thường.
+--   Chạy khi: DELETE trên HANG_THANH_VIEN.
+--   Mã lỗi: 50219.
+-- ----------------------------------------------------------------------------
 CREATE OR ALTER TRIGGER dbo.trg_HANG_THANH_VIEN_RB15_XoaHang
 ON dbo.HANG_THANH_VIEN
 INSTEAD OF DELETE
@@ -97,59 +81,61 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Chặn xóa nếu có bất kỳ hội viên nào đang thuộc về hạng bị xóa
-    IF EXISTS (
-        SELECT 1
-        FROM dbo.HOI_VIEN AS hv
-        JOIN deleted AS d ON d.MaHang = hv.MaHang
-    )
-    BEGIN
-        THROW 50219, N'RB15: Không thể xóa hạng thành viên đang có hội viên sử dụng.', 1;
-    END;
+    IF EXISTS (SELECT 1 FROM dbo.HOI_VIEN AS hv JOIN deleted AS d ON d.MaHang = hv.MaHang)
+        THROW 50219, N'RB15 (HANG_THANH_VIEN.MaHang): Không xóa được hạng thành viên đang có hội viên.', 1;
 
-    -- Nếu không có hội viên nào dùng thì thực hiện xóa
     DELETE h
     FROM dbo.HANG_THANH_VIEN AS h
     JOIN deleted AS d ON d.MaHang = h.MaHang;
 END;
 GO
 
--- ============================================================================
--- 3. TRIGGER TRÊN BẢNG HANG_THANH_VIEN: Đồng bộ hạng khi đổi mốc điểm tối thiểu
--- ============================================================================
+-- ----------------------------------------------------------------------------
+-- trg_HANG_THANH_VIEN_RB15_DongBoHang
+--   RB15: thêm hạng mới hoặc đổi mốc điểm tối thiểu thì xếp lại hạng cho mọi hội viên.
+--   Tính: HOI_VIEN.MaHang của các hội viên đang lệch.
+--   Chạy khi: INSERT, UPDATE(DiemToiThieu) trên HANG_THANH_VIEN.
+--   Mã lỗi: 50218 có hội viên không còn hạng phù hợp.
+-- ----------------------------------------------------------------------------
 CREATE OR ALTER TRIGGER dbo.trg_HANG_THANH_VIEN_RB15_DongBoHang
 ON dbo.HANG_THANH_VIEN
-AFTER UPDATE
+AFTER INSERT, UPDATE
 AS
 BEGIN
     SET NOCOUNT ON;
+    IF NOT UPDATE(DiemToiThieu) RETURN;
 
-    -- Nếu có cập nhật mốc DiemToiThieu thì đồng bộ lại toàn bộ hội viên
-    IF UPDATE(DiemToiThieu) AND TRIGGER_NESTLEVEL() <= 2
-    BEGIN
-        ;WITH HangChuanChoTatCa AS (
-            SELECT 
-                hv.MaKH,
-                (
-                    SELECT TOP (1) h.MaHang
-                    FROM dbo.HANG_THANH_VIEN AS h
-                    WHERE h.DiemToiThieu <= hv.DiemTichLuy
-                    ORDER BY h.DiemToiThieu DESC
-                ) AS MaHangMoi
-            FROM dbo.HOI_VIEN AS hv
-        )
-        UPDATE hv
-        SET hv.MaHang = hc.MaHangMoi
+    IF EXISTS (SELECT 1
+               FROM dbo.HOI_VIEN AS hv
+               WHERE NOT EXISTS (SELECT 1 FROM dbo.HANG_THANH_VIEN AS h WHERE h.DiemToiThieu <= hv.DiemTichLuy))
+        THROW 50218, N'RB15 (HANG_THANH_VIEN.DiemToiThieu): Sau khi đổi mốc điểm có hội viên không còn hạng thành viên phù hợp.', 1;
+
+    WITH HangChuan AS (
+        SELECT hv.MaKH,
+               (SELECT TOP (1) h.MaHang
+                FROM dbo.HANG_THANH_VIEN AS h
+                WHERE h.DiemToiThieu <= hv.DiemTichLuy
+                ORDER BY h.DiemToiThieu DESC) AS MaHangChuan
         FROM dbo.HOI_VIEN AS hv
-        JOIN HangChuanChoTatCa AS hc ON hc.MaKH = hv.MaKH
-        WHERE hc.MaHangMoi IS NOT NULL AND hv.MaHang <> hc.MaHangMoi;
-    END;
+    )
+    UPDATE hv
+    SET hv.MaHang = hc.MaHangChuan
+    FROM dbo.HOI_VIEN AS hv
+    JOIN HangChuan AS hc ON hc.MaKH = hv.MaKH
+    WHERE hv.MaHang <> hc.MaHangChuan;
 END;
 GO
 
--- ============================================================================
--- 4. TRIGGER TRÊN BẢNG HOA_DON: Tích điểm khi hóa đơn chuyển sang 'Đã thanh toán'
--- ============================================================================
+-- ----------------------------------------------------------------------------
+-- trg_HOA_DON_RB15_TichDiemHoiVien
+--   RB15: hóa đơn của khách không phải hội viên không được cộng điểm; hóa đơn đã thanh toán của hội viên có
+--         điểm cộng bằng 1 điểm cho mỗi 10.000 đồng tổng phải trả (lấy phần nguyên).
+--   Tính: khi hóa đơn của hội viên chuyển sang 'Đã thanh toán': ghi HOA_DON.DiemCong trước, rồi cộng vào
+--         HOI_VIEN.DiemTichLuy (trg_HOI_VIEN_RB15_CapNhatHang tự nâng hạng). Ghi DiemCong trước để
+--         trg_HOA_DON_RB13_TienGiam không so khoản giảm với phần trăm của hạng mới.
+--   Chạy khi: INSERT, UPDATE trên HOA_DON.
+--   Mã lỗi: 50216, 50217.
+-- ----------------------------------------------------------------------------
 CREATE OR ALTER TRIGGER dbo.trg_HOA_DON_RB15_TichDiemHoiVien
 ON dbo.HOA_DON
 AFTER INSERT, UPDATE
@@ -157,101 +143,81 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- 4.1. Kiểm tra khách không phải hội viên thì DiemCong không được > 0
-    IF EXISTS (
-        SELECT 1
-        FROM inserted AS i
-        JOIN dbo.PHIEN_CHOI AS pc ON pc.MaPhien = i.MaPhien
-        LEFT JOIN dbo.HOI_VIEN AS hv ON hv.MaKH = pc.MaKH
-        WHERE hv.MaKH IS NULL AND i.DiemCong > 0
-    )
-    BEGIN
-        THROW 50216, N'RB15: Hóa đơn của khách hàng không phải hội viên không được cộng điểm.', 1;
-    END;
+    IF EXISTS (SELECT 1
+               FROM inserted AS i
+               JOIN dbo.PHIEN_CHOI AS pc    ON pc.MaPhien = i.MaPhien
+               LEFT JOIN dbo.HOI_VIEN AS hv ON hv.MaKH = pc.MaKH
+               WHERE hv.MaKH IS NULL AND i.DiemCong > 0)
+        THROW 50216, N'RB15 (HOA_DON.DiemCong): Hóa đơn của khách không phải hội viên không được cộng điểm.', 1;
 
-    -- 4.2. Kiểm tra nếu là hội viên và đã thanh toán thì điểm cộng không được sai lệch công thức
-    -- (Áp dụng khi người dùng cố ý nhập DiemCong khác 0 và khác FLOOR(TongPhaiTra / 10000.0))
-    IF EXISTS (
-        SELECT 1
+    -- Chỉ xét hóa đơn đã thanh toán từ trước lệnh này; hóa đơn vừa chuyển sang 'Đã thanh toán' được ghi
+    -- DiemCong đúng công thức ở bước dưới
+    IF EXISTS (SELECT 1
+               FROM inserted AS i
+               JOIN deleted AS d         ON d.MaHoaDon = i.MaHoaDon
+               JOIN dbo.PHIEN_CHOI AS pc ON pc.MaPhien = i.MaPhien
+               JOIN dbo.HOI_VIEN AS hv   ON hv.MaKH = pc.MaKH
+               WHERE d.TrangThaiThanhToan = N'Đã thanh toán'
+                 AND i.TrangThaiThanhToan = N'Đã thanh toán'
+                 AND i.DiemCong <> 0
+                 AND i.DiemCong <> FLOOR(i.TongPhaiTra / 10000.0))
+        THROW 50217, N'RB15 (HOA_DON.DiemCong): Điểm cộng phải bằng 1 điểm cho mỗi 10.000 đồng tổng phải trả.', 1;
+
+    IF NOT UPDATE(TrangThaiThanhToan) RETURN;
+
+    UPDATE hd
+    SET hd.DiemCong = FLOOR(hd.TongPhaiTra / 10000.0)
+    FROM dbo.HOA_DON AS hd
+    JOIN inserted AS i        ON i.MaHoaDon = hd.MaHoaDon
+    LEFT JOIN deleted AS d    ON d.MaHoaDon = i.MaHoaDon
+    JOIN dbo.PHIEN_CHOI AS pc ON pc.MaPhien = i.MaPhien
+    JOIN dbo.HOI_VIEN AS hv   ON hv.MaKH = pc.MaKH
+    WHERE i.TrangThaiThanhToan = N'Đã thanh toán'
+      AND (d.MaHoaDon IS NULL OR d.TrangThaiThanhToan <> N'Đã thanh toán')
+      AND hd.DiemCong <> FLOOR(hd.TongPhaiTra / 10000.0);
+
+    WITH HoaDonMoiThanhToan AS (
+        SELECT pc.MaKH, FLOOR(i.TongPhaiTra / 10000.0) AS DiemDuocCong
         FROM inserted AS i
+        LEFT JOIN deleted AS d    ON d.MaHoaDon = i.MaHoaDon
         JOIN dbo.PHIEN_CHOI AS pc ON pc.MaPhien = i.MaPhien
-        JOIN dbo.HOI_VIEN AS hv ON hv.MaKH = pc.MaKH
+        JOIN dbo.HOI_VIEN AS hv   ON hv.MaKH = pc.MaKH
         WHERE i.TrangThaiThanhToan = N'Đã thanh toán'
-          AND i.DiemCong <> 0
-          AND i.DiemCong <> FLOOR(i.TongPhaiTra / 10000.0)
+          AND (d.MaHoaDon IS NULL OR d.TrangThaiThanhToan <> N'Đã thanh toán')
     )
-    BEGIN
-        THROW 50217, N'RB15: Điểm cộng trên hóa đơn không khớp với quy tắc 1 điểm cho mỗi 10.000 đồng tổng phải trả.', 1;
-    END;
-
-    -- 4.3. Khi hóa đơn chuyển sang trạng thái 'Đã thanh toán':
-    -- Tự động tích lũy điểm cho hội viên và gán giá trị dẫn xuất DiemCong trên hóa đơn
-    IF UPDATE(TrangThaiThanhToan) OR NOT EXISTS (SELECT 1 FROM deleted)
-    BEGIN
-        -- Danh sách các hóa đơn vừa chuyển sang 'Đã thanh toán' của hội viên
-        ;WITH HoaDonMoiThanhToan AS (
-            SELECT 
-                i.MaHoaDon,
-                pc.MaKH,
-                FLOOR(i.TongPhaiTra / 10000.0) AS DiemDuocCong
-            FROM inserted AS i
-            LEFT JOIN deleted AS d ON d.MaHoaDon = i.MaHoaDon
-            JOIN dbo.PHIEN_CHOI AS pc ON pc.MaPhien = i.MaPhien
-            JOIN dbo.HOI_VIEN AS hv ON hv.MaKH = pc.MaKH
-            WHERE i.TrangThaiThanhToan = N'Đã thanh toán'
-              AND (d.MaHoaDon IS NULL OR d.TrangThaiThanhToan <> N'Đã thanh toán')
-        )
-        -- Tích điểm cho hội viên (khi DiemTichLuy tăng, trigger 1 sẽ tự động thăng hạng nếu đủ mốc)
-        UPDATE hv
-        SET hv.DiemTichLuy = hv.DiemTichLuy + hd.TongDiemThem
-        FROM dbo.HOI_VIEN AS hv
-        JOIN (
-            SELECT MaKH, SUM(DiemDuocCong) AS TongDiemThem
-            FROM HoaDonMoiThanhToan
-            WHERE DiemDuocCong > 0
-            GROUP BY MaKH
-        ) AS hd ON hd.MaKH = hv.MaKH;
-
-        -- Tự động cập nhật thuộc tính dẫn xuất DiemCong trên HOA_DON nếu chưa gán
-        IF TRIGGER_NESTLEVEL() <= 2
-        BEGIN
-            UPDATE hd
-            SET hd.DiemCong = FLOOR(hd.TongPhaiTra / 10000.0)
-            FROM dbo.HOA_DON AS hd
-            JOIN inserted AS i ON i.MaHoaDon = hd.MaHoaDon
-            LEFT JOIN deleted AS d ON d.MaHoaDon = i.MaHoaDon
-            JOIN dbo.PHIEN_CHOI AS pc ON pc.MaPhien = i.MaPhien
-            JOIN dbo.HOI_VIEN AS hv ON hv.MaKH = pc.MaKH
-            WHERE i.TrangThaiThanhToan = N'Đã thanh toán'
-              AND (d.MaHoaDon IS NULL OR d.TrangThaiThanhToan <> N'Đã thanh toán')
-              AND hd.DiemCong <> FLOOR(hd.TongPhaiTra / 10000.0);
-        END;
-    END;
+    UPDATE hv
+    SET hv.DiemTichLuy = hv.DiemTichLuy + x.TongDiemThem
+    FROM dbo.HOI_VIEN AS hv
+    JOIN (SELECT MaKH, SUM(DiemDuocCong) AS TongDiemThem
+          FROM HoaDonMoiThanhToan
+          WHERE DiemDuocCong > 0
+          GROUP BY MaKH) AS x ON x.MaKH = hv.MaKH;
 END;
 GO
 
--- ============================================================================
--- 5. TRIGGER BẢO VỆ ĐIỂM CỘNG: Khóa không cho sửa DiemCong khi hóa đơn đã thanh toán
--- ============================================================================
+-- ----------------------------------------------------------------------------
+-- trg_HOA_DON_RB15_BaoVeDiemCong
+--   RB15: hóa đơn đã thanh toán chỉ được đổi DiemCong sang đúng giá trị dẫn xuất
+--         (hội viên: FLOOR(TongPhaiTra / 10000); khách không phải hội viên: 0).
+--   Chạy khi: UPDATE(DiemCong) trên HOA_DON.
+--   Mã lỗi: 50217.
+-- ----------------------------------------------------------------------------
 CREATE OR ALTER TRIGGER dbo.trg_HOA_DON_RB15_BaoVeDiemCong
 ON dbo.HOA_DON
 AFTER UPDATE
 AS
 BEGIN
     SET NOCOUNT ON;
+    IF NOT UPDATE(DiemCong) RETURN;
 
-    -- Bỏ qua nếu lệnh UPDATE được thực hiện từ trigger cấp trên (tự động tính điểm)
-    IF TRIGGER_NESTLEVEL() > 1 RETURN;
-
-    IF UPDATE(DiemCong) AND EXISTS (
-        SELECT 1
-        FROM inserted AS i
-        JOIN deleted AS d ON d.MaHoaDon = i.MaHoaDon
-        WHERE d.TrangThaiThanhToan = N'Đã thanh toán'
-          AND i.DiemCong <> d.DiemCong
-    )
-    BEGIN
-        THROW 50217, N'RB15: Không thể thay đổi điểm cộng của hóa đơn đã thanh toán.', 1;
-    END;
+    IF EXISTS (SELECT 1
+               FROM inserted AS i
+               JOIN deleted AS d            ON d.MaHoaDon = i.MaHoaDon
+               JOIN dbo.PHIEN_CHOI AS pc    ON pc.MaPhien = i.MaPhien
+               LEFT JOIN dbo.HOI_VIEN AS hv ON hv.MaKH = pc.MaKH
+               WHERE d.TrangThaiThanhToan = N'Đã thanh toán'
+                 AND i.DiemCong <> d.DiemCong
+                 AND i.DiemCong <> CASE WHEN hv.MaKH IS NOT NULL THEN FLOOR(i.TongPhaiTra / 10000.0) ELSE 0 END)
+        THROW 50217, N'RB15 (HOA_DON.DiemCong): Không được sửa điểm cộng của hóa đơn đã thanh toán.', 1;
 END;
 GO

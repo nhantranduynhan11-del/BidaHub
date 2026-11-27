@@ -19,6 +19,14 @@ RANG_BUOC = {
     "CK_NhanVien_SoDienThoai": "Số điện thoại phải gồm 10 số và bắt đầu bằng 0",
     "CK_NhanVien_Du18Tuoi": "Nhân viên phải đủ 18 tuổi tại ngày vào làm",
     "CK_NhanVien_KhongTuGiamSat": "Nhân viên không thể tự giám sát chính mình",
+    # Phong (HANG_THANH_VIEN, KHACH_HANG, KHACH_HANG_SDT, HOI_VIEN)
+    "UQ_HangThanhVien_DiemToiThieu": "Điểm tối thiểu của hạng thành viên đã tồn tại",
+    "CK_HangThanhVien_DiemToiThieu": "Điểm tối thiểu của hạng thành viên không được âm",
+    "CK_HangThanhVien_PhanTramGiamGia": "Phần trăm giảm giá của hạng phải nằm trong khoảng từ 0 đến 100",
+    "CK_KhachHang_GioiTinh": "Giới tính chỉ nhận Nam, Nữ hoặc Khác",
+    "CK_KhachHangSDT_SoDienThoai": "Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0",
+    "CK_HoiVien_DiemTichLuy": "Điểm tích lũy của hội viên không được âm",
+    "UQ_HoiVien_MaTK": "Tài khoản này đã thuộc về một hội viên khác",
 }
 
 # 3) Mã lỗi chung của hệ thống khi không biết tên ràng buộc.

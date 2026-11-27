@@ -14,7 +14,7 @@ app.secret_key = os.getenv("SECRET_KEY", "bidahub-chi-dung-khi-phat-trien")
 
 # ---- Đăng ký blueprint: bỏ dấu # ở dòng của mình khi file route đã có ----
 app.register_blueprint(bp_nhan_vien)
-# from routes.khach_hang import bp as bp_khach_hang; app.register_blueprint(bp_khach_hang)  # Phong
+from routes.khach_hang import bp as bp_khach_hang; app.register_blueprint(bp_khach_hang)  # Phong
 # from routes.ban_trong import bp as bp_ban_trong; app.register_blueprint(bp_ban_trong)     # Thành
 # from routes.thong_ke import bp as bp_thong_ke; app.register_blueprint(bp_thong_ke)        # Khang
 
