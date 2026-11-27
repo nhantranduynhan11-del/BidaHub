@@ -1058,7 +1058,9 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF NOT EXISTS (SELECT 1 FROM inserted)
+    -- Lệnh DELETE: deleted có dòng, inserted rỗng. Phải xét cả deleted, vì UPDATE hoặc DELETE
+    -- không khớp dòng nào cũng gọi trigger với hai bảng đều rỗng.
+    IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
         THROW 50405, N'RB10 (DONG_GOI_MON): Không được xóa dòng gọi món; chỉ được hủy khi còn chờ chế biến.', 1;
 
     IF EXISTS (SELECT 1
